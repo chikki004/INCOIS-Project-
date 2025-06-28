@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Ocean Forecast Dashboard(Leaflet)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-velocity/dist/leaflet-velocity.min.css" />
+  <script src="https://unpkg.com/leaflet-velocity/dist/leaflet-velocity.min.js"></script>
+  <script src="https://unpkg.com/georaster"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-measure/dist/leaflet-measure.css" />
+  <script src="https://unpkg.com/leaflet-measure/dist/leaflet-measure.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/chroma-js@2.4.2/chroma.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    body {
+      min-height: 100vh;
+      min-width: 100vw;
+      height: 100vh;
+      width: 100vw;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    .main-header {
+      width: 100vw;
+      background: #0a2342;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+      font-size: 2rem;
+      font-weight: bold;
+      text-align: center;
+      letter-spacing: 1px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      position: relative;
+      z-index: 1200;
+      min-height: 56px;
+      line-height: 56px;
+      transition: opacity 0.3s, height 0.3s, min-height 0.3s, line-height 0.3s;
+    }
+    .main-header.hide-header {
+      opacity: 0;
+      pointer-events: none;
+      height: 0 !important;
+      min-height: 0 !important;
+      line-height: 0 !important;
+      overflow: hidden;
+    }
+
+    #map-container {
+      position: relative;
+      width: 100vw;
+      flex: 1 1 auto;
+      min-height: 400px;
+      background: #eee;
+      z-index: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #map {
+      flex: 1 1 auto;
+      width: 100vw;
+      height: 100%;
+      min-height: 400px;
+      z-index: 0;
+      transition: all 0.3s;
+      position: relative;
+    }
+    #map.fullscreen-map {
+      top: 0 !important;
+      height: 100vh !important;
+      width: 100vw !important;
+      z-index: 1000;
+      position: absolute;
+    }
+    .velocity-overlay {
+      pointer-events: none !important;
+    }
+    #forecast-table-container {
+      width: 100vw;
+      max-width: 100vw;
+      overflow-x: auto;
+      margin: 0 auto;
+      padding: 12px 0 0 0;
+      background: #fff;
+      z-index: 2001;
+      min-height: 40px;
+      display: none;
+      transition: max-height 0.3s, transform 0.3s;
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      max-height: 60vh;
+      height: 250px;
+      box-shadow: 0 -2px 12px rgba(0,0,0,0.15);
+      border-top: 1px solid #ccc;
+      touch-action: none;
+      will-change: transform;
+    }
+    #forecast-table-container .drag-handle {
+      width: 60px;
+      height: 6px;
+      background: #bbb;
+      border-radius: 3px;
+      margin: 0 auto 8px auto;
+      cursor: grab;
+      transition: background 0.2s;
+      touch-action: none;
+    }
+    #forecast-table-container.dragging .drag-handle {
+      background: #888;
+    }
+    body:not(.fullscreen-mode) #forecast-table-container {
+      max-height: none;
+      box-shadow: none;
+      border-top: none;
+    }
+    table {
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 4px 6px;
+      text-align: center;
+      min-width: 50px;
+    }
+    .row-label {
+      background-color: #f0f0f0;
+      font-weight: bold;
+      text-align: left;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+    }
+    .arrow {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  transition: transform 0.2s;
+}
+    #wind-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #fefefe;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 1100;
+    }
+    #wind-toggle img {
+      width: 24px;
+      height: 24px;
+    }
+    #wind-toggle.on {
+  background: #aee9ff;
+  border: 2px solid #2196f3;
+}
+#wind-toggle.off {
+  background: #fefefe;
+  border: 2px solid #bbb;
+  opacity: 0.7;
+}
+    .legend {
+      position:fixed;
+      bottom: 20px;
+      left: 20px;
+      background: #fff;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-family: sans-serif;
+      font-size: 13px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+      border: 1px solid #ddd;
+      z-index: 999;
+      width: fit-content;
+    }
+    .legend-title {
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+    .gradient-bar {
+      height: 16px;
+      width: 240px;
+      border: 1px solid #aaa;
+      border-radius:4px;
+    }
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      font-size: 12px;
+      color: #333;
+      width: 240px;
+    }
+   #home-btn {
+  position: fixed;
+  top: 220px;
+  left: 10px;
+  background: white;
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  text-align: center;
+  line-height: 36px;
+  font-size: 18px;
+  cursor: pointer;
+  z-index: 2000; /* make sure it's above map and fullscreen elements */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+    #fullscreen-btn {
+      position: fixed;
+      top: 270px;
+      left: 10px;
+      background: rgb(255, 255, 255);
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      text-align: center;
+      line-height: 36px;
+      font-size: 20px;
+      cursor: pointer;
+      z-index: 1200;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    #time-nav {
+      position: fixed;
+      top: 325px;
+      left: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 1100;
+    }
+    .nav-btn {
+      background: white;
+      border-radius: 6px;
+      width: 36px;
+      height: 36px;
+      text-align: center;
+      line-height: 36px;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(1, 1, 1, 0.3);
+    }
+    #close-forecast-table {
+      margin: 4px 8px 0 0;
+      padding: 2px 10px 2px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      float: right;
+      background: #eee;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+    }
+    #toggle-forecast-view {
+      margin: 4px 8px 0 0;
+      padding: 2px 10px 2px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      float: right;
+      background: #e0eaff;
+      border: 1px solid #7baaf7;
+      border-radius: 4px;
+      clear: both;
+      display: block;
+    }
+    @media (max-width: 700px) {
+      #forecast-table-container {
+        font-size: 11px;
+        max-height: 80vh;
+      }
+    }
+    @media (max-width: 500px) {
+      #forecast-table-container {
+        font-size: 10px;
+        max-height: 90vh;
+      }
+    }
+    @keyframes bounceUp {
+      0% { transform: translateY(40px);}
+      60% { transform: translateY(-10px);}
+      100% { transform: translateY(0);}
+    }
+    @keyframes bounceDown {
+      0% { transform: translateY(-40px);}
+      60% { transform: translateY(10px);}
+      100% { transform: translateY(0);}
+    }
+   /* --- Ensure controls are visible in browser fullscreen mode --- */
+    :fullscreen #home-btn,
+    :-webkit-full-screen #home-btn,
+    :-ms-fullscreen #home-btn {
+      display: flex !important;
+      z-index: 4000 !important;
+      position: fixed !important;
+      left: 10px !important;
+      top: 220px !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+    :fullscreen #fullscreen-btn,
+    :fullscreen .legend,
+    :fullscreen #time-nav,
+    :fullscreen #wind-toggle,
+    :-webkit-full-screen #fullscreen-btn,
+    :-webkit-full-screen .legend,
+    :-webkit-full-screen #time-nav,
+    :-webkit-full-screen #wind-toggle,
+    :-ms-fullscreen #fullscreen-btn,
+    :-ms-fullscreen .legend,
+    :-ms-fullscreen #time-nav,
+    :-ms-fullscreen #wind-toggle {
+      display: flex !important;
+      z-index: 3000 !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-header" id="main-header">
+    Ocean Forecast Dashboard
+  </div>
+
+  <div id="map-container">
+    <div id="map">
+  <div id="wind-toggle">
+    <img src="static/wind-icon.png" alt="Wind Toggle" />
+  </div>
+  <div class="legend">
+    <div class="legend-title"><strong>wind speed </strong></div>
+    <div class="color-bar">
+      <div class="gradient-bar"></div>
+      <div class="legend-labels"></div>
+    </div>
+  </div>
+  <div id="fullscreen-btn" title="Full Screen">⛶</div>
+  <div id="home-btn" title="Reset View">🏠</div>
+  <div id="time-nav">
+    <div class="nav-btn" id="backward-btn" title="Previous Time">⏪</div>
+    <div class="nav-btn" id="forward-btn" title="Next Time">⏩</div>
+  </div>
+</div>
+
+  <!-- Forecast table/graph will be rendered here, OUTSIDE the map container -->
+  <div id="forecast-table-container">
+    <div class="drag-handle"></div>
+  </div>
+
+  <script>
+
+    // --- Dynamic color scale for GeoTIFF and legend ---
+    let colorScale = null;
+    let dataMin = 0, dataMax = 2.6; // Defaults, will be updated from GeoTIFF
+ 
+   function setColorScaleAndLegend(min, max, title = "Wind Speed (m/s)") {
+  dataMin = min;
+  dataMax = max;
+  colorScale = chroma.scale(colorPalette).domain([min, max]);
+  // Update legend
+  const steps = 100;
+  let gradient = "linear-gradient(to right,";
+  for (let i = 0; i <= steps; i++) {
+    const value = min + (i / steps) * (max - min);
+    gradient += `${colorScale(value).hex()} ${(i / steps) * 100}%${i < steps ? ',' : ''}`;
+  }
+  gradient += ")";
+  document.querySelector('.legend-title').textContent = title;
+  document.querySelector('.gradient-bar').style.background = gradient;
+  // Remove/hide the legend labels below the color bar
+const minLabel = min.toFixed(2);
+const maxLabel = max.toFixed(2);
+document.querySelector('.legend-labels').innerHTML = `
+  <span style="text-align:left;">${maxLabel}</span>
+  <span style="flex:1"></span>
+  <span style="text-align:right;">${minLabel}</span>
+`;
+}
+// Rainbow color palette (Violet to Red, for low to high values)
+const colorPalette = [
+  '#FF0000', // Red
+  '#FF7F00', // Orange
+  '#FFFF00', // Yellow
+  '#00FF00', // Green
+  '#00FFFF', // Cyan
+  '#0000FF', // Blue
+  '#4B0082', // Indigo
+  '#8B00FF'  // Violet
+];
+// Use this for both GeoTIFF and legend
+function getColorForValue(value) {
+  if (value == null || isNaN(value)) return '#ffffff';
+  value = Math.max(dataMin, Math.min(dataMax, value));
+  return colorScale(value).hex();
+}
+  
+    // --- Toggle state tracking ---
+    let lastForecastLat = null;
+    let lastForecastLon = null;
+    let lastForecastView = "table"; // or "graph"
+
+    document.getElementById("fullscreen-btn").addEventListener("click", function() {
+      const mapDiv = document.getElementById("map");
+      const header = document.getElementById("main-header");
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+        header.classList.add("hide-header");
+        mapDiv.classList.add("fullscreen-map");
+        if (mapDiv.requestFullscreen) {
+          mapDiv.requestFullscreen();
+        } else if (mapDiv.webkitRequestFullscreen) {
+          mapDiv.webkitRequestFullscreen();
+        } else if (mapDiv.msRequestFullscreen) {
+          mapDiv.msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+      }
+    });
+
+    function handleFullscreenChange() {
+      const header = document.getElementById("main-header");
+      const mapDiv = document.getElementById("map");
+      if (
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      ) {
+        document.body.classList.add("fullscreen-mode");
+      } else {
+        document.body.classList.remove("fullscreen-mode");
+      }
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+        header.classList.remove("hide-header");
+        mapDiv.classList.remove("fullscreen-map");
+      }
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("msfullscreenchange", handleFullscreenChange);
+    document.addEventListener("DOMContentLoaded", function() {
+    let clickedPoints = [];
+    let currentIndex = -1;
+    let timeZone = 'local';
+    let timeFormat = '24h';
+    let timeControl = 'timeline';
+    let windLayer = null;
+    const windToggle = document.getElementById("wind-toggle");
+    const windToggleIcon = document.getElementById("wind-toggle-icon");
+    const map = L.map('map').setView([20, 80], 5);
+
+    const measureControl = new L.Control.Measure({
+      position: 'topleft',
+      primaryLengthUnit: 'kilometers',
+      secondaryLengthUnit: 'meters',
+      primaryAreaUnit: 'sqmeters',
+      secondaryAreaUnit: undefined,
+      activeColor: '#db4a29',
+      completedColor: '#9b2d14'
+    });
+    map.addControl(measureControl);
+
+    let isMeasuring = false;
+    function blockMapDrag(e) {
+      if (isMeasuring) {
+        e.stopPropagation();
+        e.preventDefault();
+        return false;
+      }
+    }
+
+
+     map.on('measurestart', function() {
+      isMeasuring = true;
+      map.dragging.disable();
+      map.doubleClickZoom.disable();
+      map.scrollWheelZoom.disable();
+      map.boxZoom.disable();
+      map.keyboard.disable();
+
+      map._container.addEventListener('mousedown', blockMapDrag, true);
+      map._container.addEventListener('mousemove', blockMapDrag, true);
+      map._container.addEventListener('mouseup', blockMapDrag, true);
+      map._container.addEventListener('touchstart', blockMapDrag, true);
+      map._container.addEventListener('touchmove', blockMapDrag, true);
+      map._container.addEventListener('touchend', blockMapDrag, true);
+    });
+
+    function stopBlockingMapDrag() {
+      map._container.removeEventListener('mousedown', blockMapDrag, true);
+      map._container.removeEventListener('mousemove', blockMapDrag, true);
+      map._container.removeEventListener('mouseup', blockMapDrag, true);
+      map._container.removeEventListener('touchstart', blockMapDrag, true);
+      map._container.removeEventListener('touchmove', blockMapDrag, true);
+      map._container.removeEventListener('touchend', blockMapDrag, true);
+    }
+    map.on('measurefinish', function() {
+      isMeasuring = false;
+      map.dragging.enable();
+      map.doubleClickZoom.enable();
+      map.scrollWheelZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+      stopBlockingMapDrag();
+    });
+    map.on('measureclear', function() {
+      isMeasuring = false;
+      map.dragging.enable();
+      map.doubleClickZoom.enable();
+      map.scrollWheelZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+      stopBlockingMapDrag();
+    });
+
+ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OpenStreetMap contributors &copy; <a href='https://carto.com/attributions'>CartoDB</a>",
+      subdomains: "abcd",
+      maxZoom: 19
+    }).addTo(map);
+
+     // --- GeoTIFF loading and dynamic color/legend update ---
+  // --- GeoTIFF loading and dynamic color/legend update ---
+// When you load your GeoTIFF or wind data, always call setColorScaleAndLegend with the actual min/max:
+fetch('static/tiles/wind_1.tif')
+  .then(res => res.arrayBuffer())
+  .then(parseGeoraster)
+  .then(georaster => {
+    const globalMin = georaster.mins[0];
+    const globalMax = georaster.maxs[0];
+    setColorScaleAndLegend(globalMin, globalMax, "Wind Speed (m/s)");
+
+    // Create a dedicated color scale for the raster layer
+   const rasterColorScale = chroma.scale(colorPalette).domain([globalMin, globalMax]);
+pixelValuesToColorFn: values => {
+  const value = values[0];
+  if (value === null || isNaN(value)) return null;
+  const clamped = Math.max(globalMin, Math.min(globalMax, value));
+  return rasterColorScale(clamped).hex();
+}
+
+    const layer = new GeoRasterLayer({
+      georaster,
+      opacity: 1.0,
+      resolution: 256,
+      pixelValuesToColorFn: values => {
+        const value = values[0];
+        if (value === null || isNaN(value)) return null;
+        const clamped = Math.max(globalMin, Math.min(globalMax, value));
+        return rasterColorScale(clamped).hex();
+      }
+    });
+    map.addLayer(layer);
+    map.fitBounds(layer.getBounds());
+  });
+// When you load wind data (for animation), also update the legend and colorScale:
+windToggle.addEventListener("click", () => {
+  if (windLayer) {
+    map.removeLayer(windLayer);
+    windLayer = null;
+    windToggle.classList.remove("on");
+    windToggle.classList.add("off");
+    windToggleIcon.style.opacity = "0.5";
+    windToggle.title = "Turn ON Wind Animation";
+  } else {
+    fetch('/wind')
+      .then(res => res.json())
+      .then(data => {
+        const processWindData = (arr) => {
+          if (data.shape.u_wind.length === 2) {
+            return arr.map(row => row.map(val => val === null ? NaN : val));
+          }
+          return [arr.map(val => val === null ? NaN : val)];
+        };
+        const u_wind = processWindData(data.u_wind);
+        const v_wind = processWindData(data.v_wind);
+        const min = data.min;
+        const max = data.max;
+        // Always update color scale and legend here too!
+       setColorScaleAndLegend(min, max, "Wind Speed (m/s)");
+        updateWindVisualization(u_wind, v_wind, data.lats, data.lons);
+      });
+  }
+});
+
+    const variableNames = {
+      DIR: "Direction",
+      HS: "Significant Wave Height(m)",
+      PDI00: "Primary Wave Period(s)",
+      T02: "Secondary Wave Period",
+      MWD: "Mean Wave Direction",
+      PHS00: "Primary Swell Height(m)",
+      PHS01: "Secondary Swell Height(m)",
+      PTP00: "Primary Swell Period(s)",
+      PTP01: "Secondary Swell Period(s)"
+    };
+
+    function getVariableFullName(abbr) {
+      return variableNames[abbr] || abbr;
+    }
+
+    function formatTime(dateStr) {
+      const d = new Date(dateStr);
+      const localDate = timeZone === 'utc' ? new Date(d.toUTCString()) : new Date(d);
+      return localDate.toLocaleTimeString([], {
+        hour: '2-digit', minute: '2-digit',
+        hour12: timeFormat === '12h'
+      });
+    }
+
+    function formatTimeToIST(utcTimeStr) {
+      const utcDate = new Date(utcTimeStr);
+      const istOffset = 330;
+      const istDate = new Date(utcDate.getTime() + istOffset * 60000);
+      return istDate.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour12: true,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Helper to render the forecast table or graph below the map
+    function renderForecastTable(html, viewType = "table") {
+  const container = document.getElementById('forecast-table-container');
+  container.innerHTML = `
+    <div class="drag-handle"></div>
+    <div style="text-align:right;">
+      <button id="close-forecast-table">Close ✖</button>
+      <button id="toggle-forecast-view">${viewType === "table" ? "Switch to Graph" : "Switch to Table"}</button>
+    </div>
+    ${html}
+  `;
+  container.style.display = "block";
+  setTimeout(() => {
+    container.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, 100);
+
+  document.getElementById('close-forecast-table').onclick = function() {
+    container.style.display = "none";
+  };
+  document.getElementById('toggle-forecast-view').onclick = function() {
+    if (lastForecastLat !== null && lastForecastLon !== null) {
+      if (lastForecastView === "table") {
+        loadForecastGraph(lastForecastLat, lastForecastLon, true);
+      } else {
+        loadForecast(lastForecastLat, lastForecastLon, true);
+      }
+    }
+  };
+
+      // Toggle button handler
+      document.getElementById('toggle-forecast-view').onclick = function() {
+        if (lastForecastLat !== null && lastForecastLon !== null) {
+          if (lastForecastView === "table") {
+            loadForecastGraph(lastForecastLat, lastForecastLon, true);
+          } else {
+            loadForecast(lastForecastLat, lastForecastLon, true);
+          }
+        }
+      };
+
+      // --- DRAG HANDLE LOGIC (always attach to current handle) ---
+      let dragHandle = container.querySelector('.drag-handle');
+      let isDragging = false;
+      let startY = 0;
+      let startHeight = 0;
+      let maxHeight = window.innerHeight * 0.9;
+      let minHeight = 60;
+
+      function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+      }
+ function onMouseDown(e) {
+    isDragging = true;
+    startY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+    startHeight = container.offsetHeight;
+    container.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove, { passive: false });
+    document.addEventListener('mouseup', onMouseUp, { passive: false });
+    document.addEventListener('touchmove', onMouseMove, { passive: false });
+    document.addEventListener('touchend', onMouseUp, { passive: false });
+    e.preventDefault();
+  }
+
+  function onMouseMove(e) {
+    if (!isDragging) return;
+    const currentY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+    const delta = startY - currentY;
+    const newHeight = clamp(startHeight + delta, minHeight, maxHeight);
+    container.style.height = `${newHeight}px`;
+    container.style.maxHeight = `${maxHeight}px`;
+    e.preventDefault();
+  }
+
+  function onMouseUp(e) {
+    isDragging = false;
+    container.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMouseMove, { passive: false });
+    document.removeEventListener('mouseup', onMouseUp, { passive: false });
+    document.removeEventListener('touchmove', onMouseMove, { passive: false });
+    document.removeEventListener('touchend', onMouseUp, { passive: false });
+    e.preventDefault();
+  }
+
+  dragHandle.addEventListener('mousedown', onMouseDown, { passive: false });
+  dragHandle.addEventListener('touchstart', onMouseDown, { passive: false });
+
+
+      // Set default height when shown
+      container.style.height = '250px';
+      container.style.maxHeight = `${maxHeight}px`;
+      container.style.animation = 'bounceUp 0.4s';
+      setTimeout(() => container.style.animation = '', 400);
+
+      // Update max height on resize
+      window.addEventListener('resize', () => {
+        maxHeight = window.innerHeight * 0.9;
+        if (parseInt(container.style.maxHeight) > maxHeight) {
+          container.style.maxHeight = `${maxHeight}px`;
+          container.style.height = `${maxHeight}px`;
+        }
+      });
+    }
+// Helper to check if in fullscreen (can be kept for other uses if needed)
+function isInFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+}
+
+// Map click: show popup with "View Table" and "View Graph" buttons
+map.on('click', function (e) {
+  if (measureControl._measuring) {
+    return;
+  }
+
+  const { lat, lng } = e.latlng;
+  clickedPoints.push({ lat, lng });
+  currentIndex = clickedPoints.length - 1;
+
+  fetch(`/data?lat=${lat}&lon=${lng}`)
+    .then(res => res.json())
+    .then(data => {
+      const times = data.time;
+      delete data.time;
+        const windVar = data["HS"] ? "HS" : Object.keys(data)[0];
+  const currentVal = data[windVar][0];
+
+      const popupContent = `
+    <strong>${getVariableFullName(windVar)}</strong><br>
+    Forecast for ${formatTimeToIST(times[0])}<br>
+    Lat: ${lat.toFixed(3)}, Lon: ${lng.toFixed(3)}<br>
+    Value: ${parseFloat(currentVal).toFixed(2)}<br>
+    <div style="margin-top:8px;">
+      <button id="view-forecast-table-btn"><b>View Table</b></button>
+      <button id="view-forecast-graph-btn"><b>View Graph</b></button>
+    </div>
+  `;
+
+  L.popup().setLatLng([lat, lng]).setContent(popupContent).openOn(map);
+
+
+      setTimeout(() => {
+        const tableBtn = document.getElementById('view-forecast-table-btn');
+        const graphBtn = document.getElementById('view-forecast-graph-btn');
+
+        if (tableBtn) {
+          tableBtn.onclick = function(ev) {
+            ev.preventDefault();
+            loadForecast(lat, lng);   // always use popup on map
+            map.closePopup();
+            return false;
+          };
+        }
+
+        if (graphBtn) {
+          graphBtn.onclick = function(ev) {
+            ev.preventDefault();
+            loadForecastGraph(lat, lng);  // always use popup on map
+            map.closePopup();
+            return false;
+          };
+        }
+      }, 100);
+    });
+});
+
+    // Render the forecast table below the map
+    function loadForecast(lat, lon, fromToggle = false) {
+      lastForecastLat = lat;
+      lastForecastLon = lon;
+      lastForecastView = "table";
+      fetch(`/data?lat=${lat}&lon=${lon}`)
+        .then(res => res.json())
+        .then(data => {
+          const startDate = new Date("2025-05-15");
+          const endDate = new Date("2025-05-21");
+          const allowedHours = [0, 3, 6, 9, 12, 15, 18, 21];
+          const dateKeys = [];
+          for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            dateKeys.push(d.toISOString().slice(0, 10));
+          }
+          const timeLabels = allowedHours.map(h => h.toString().padStart(2, '0') + ":00");
+          const times = data.time;
+          delete data.time;
+          const timeIndexMap = {};
+          times.forEach((t, i) => {
+            const d = new Date(t);
+            const dateKey = d.toISOString().slice(0, 10);
+            const hour = d.getUTCHours();
+            if (dateKeys.includes(dateKey) && allowedHours.includes(hour)) {
+              const label = dateKey + "_" + hour.toString().padStart(2, '0') + ":00";
+              timeIndexMap[label] = i;
+            }
+          });
+
+          let html = `<div style="max-width:98vw;overflow:auto;"><table style="font-size:11px;"><thead><tr><th class="row-label" rowspan="2">Variable</th>`;
+          dateKeys.forEach(date => {
+            html += `<th colspan="${timeLabels.length}">${date}</th>`;
+          });
+          html += '</tr><tr>';
+          dateKeys.forEach(date => {
+            timeLabels.forEach(time => {
+              html += `<th>${time}</th>`;
+            });
+          });
+          html += '</tr></thead><tbody>';
+
+          const allowedVars = ["DIR", "HS", "T01", "T02", "MWD", "PHS00", "PHS01", "PTP00", "PTP01"];
+          // ...inside loadForecast...
+const directionVars = ["DIR", "MWD"];
+for (let varName in data) {
+  if (!allowedVars.includes(varName)) continue;
+  html += `<tr><td class="row-label">${getVariableFullName(varName)}</td>`;
+  let lastVal = null;
+  dateKeys.forEach(date => {
+    timeLabels.forEach(time => {
+      const key = date + "_" + time;
+      const idx = timeIndexMap[key];
+      let val = (idx !== undefined) ? data[varName][idx] : lastVal;
+// ...inside loadForecast...
+if (directionVars.includes(varName)) {
+  const angleDeg = (val !== null && !isNaN(val)) ? val : 0;
+  html += `<td>
+    <span class="arrow" style="display:inline-block; transform: rotate(${angleDeg}deg);">
+      <svg width="22" height="22" viewBox="0 0 28 28" style="display:block;">
+        <polygon points="14,4 20,18 14,14 8,18" fill="#0033cc" stroke="black" stroke-width="1.5"/>
+        <rect x="12" y="14" width="4" height="8" fill="#0033cc" stroke="black" stroke-width="1.5"/>
+      </svg>
+    </span>
+  </td>`;
+} else {
+     const bg = getColorForValue(val);
+const cellStyle = (val === null || isNaN(val)) ? 'background:#eee;color:#888' : `background:${bg};color:white`;
+html += `<td style="${cellStyle}">${(val !== null && typeof val === 'number') ? val.toFixed(1) : '-'}</td>`;
+
+      }
+      if (val !== null && !isNaN(val)) lastVal = val;
+    });
+  });
+  html += '</tr>';
+}
+          html += '</tbody></table></div>';
+
+          renderForecastTable(html, "table");
+        });
+    }
+
+    // Render the forecast graph below the map
+    function loadForecastGraph(lat, lon, fromToggle = false) {
+  lastForecastLat = lat;
+  lastForecastLon = lon;
+  lastForecastView = "graph";
+  fetch(`/data?lat=${lat}&lon=${lon}`)
+    .then(res => res.json())
+    .then(data => {
+      const times = data.time;
+      delete data.time;
+      const allowedVars = ["DIR", "HS", "T01", "T02", "MWD", "PHS00", "PHS01", "PTP00", "PTP01"];
+      const variableFullNames = {
+        DIR: "Direction (°)",
+        HS: "Significant Wave Height (m)",
+        T01: "Primary Wave Period (s)",
+        T02: "Secondary Wave Period (s)",
+        MWD: "Mean Wave Direction (°)",
+        PHS00: "Primary Swell Height (m)",
+        PHS01: "Secondary Swell Height (m)",
+        PTP00: "Primary Swell Period (s)",
+        PTP01: "Secondary Swell Period (s)"
+      };
+      const datasets = [];
+      const colors = [
+        "#0074D9", "#FF4136", "#2ECC40", "#FF851B", "#B10DC9",
+        "#FFDC00", "#001f3f", "#39CCCC", "#01FF70"
+      ];
+      let colorIdx = 0;
+      let firstVarLabel = "";
+      for (let varName in data) {
+        if (!allowedVars.includes(varName)) continue;
+        const label = variableFullNames[varName] || varName;
+        if (!firstVarLabel) firstVarLabel = label;
+        datasets.push({
+          label: label,
+          data: data[varName],
+          borderColor: colors[colorIdx % colors.length],
+          fill: false,
+          tension: 0.2
+        });
+        colorIdx++;
+      }
+      const graphHtml = `
+        <div style="max-width:98vw;overflow:auto;">
+          <canvas id="forecastChart" height="300"></canvas>
+        </div>
+      `;
+      renderForecastTable(graphHtml, "graph");
+
+      setTimeout(() => {
+        // 1. Aggregate data by date
+        const dateMap = {};
+        times.forEach((t, idx) => {
+          const dateStr = new Date(t).toISOString().slice(0, 10);
+          if (!dateMap[dateStr]) dateMap[dateStr] = [];
+          datasets.forEach((ds, dsIdx) => {
+            if (!dateMap[dateStr][dsIdx]) dateMap[dateStr][dsIdx] = [];
+            dateMap[dateStr][dsIdx].push(ds.data[idx]);
+          });
+        });
+
+        // 2. Prepare new datasets with daily average
+        const dateLabels = Object.keys(dateMap).slice(0, 7);
+        const newDatasets = datasets.map((ds, dsIdx) => ({
+          ...ds,
+          data: dateLabels.map(date =>
+            dateMap[date][dsIdx].reduce((a, b) => a + b, 0) / dateMap[date][dsIdx].length
+          )
+        }));
+
+        // Variable units mapping
+        const variableUnits = {
+          DIR: "degrees",
+          HS: "meters",
+          T01: "seconds",
+          T02: "seconds",
+          MWD: "degrees",
+          PHS00: "meters",
+          PHS01: "meters",
+          PTP00: "seconds",
+          PTP01: "seconds"
+        };
+
+        // Variable full names mapping
+        const variableFullNamesShort = {
+          DIR: "Direction",
+          HS: "Significant Wave Height",
+          T01: "Primary Wave Period",
+          T02: "Secondary Wave Period",
+          MWD: "Mean Wave Direction",
+          PHS00: "Primary Swell Height",
+          PHS01: "Secondary Swell Height",
+          PTP00: "Primary Swell Period",
+          PTP01: "Secondary Swell Period"
+        };
+
+        const ctx = document.getElementById('forecastChart').getContext('2d');
+        let chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: dateLabels,
+            datasets: newDatasets
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: true },
+              tooltip: { enabled: false }
+            },
+            scales: {
+              x: { display: true, title: { display: true, text: 'Date' } },
+              y: { 
+                display: true, 
+                title: { 
+                  display: true, 
+                  text: firstVarLabel // Default y-axis label
+                }
+              }
+            },
+           // ...inside loadForecastGraph, replace the onClick handler with this...
+onClick: function(evt, elements) {
+  if (elements.length > 0) {
+    const chartElem = elements[0];
+    const datasetIndex = chartElem.datasetIndex;
+    const index = chartElem.index;
+    const dataset = this.data.datasets[datasetIndex];
+    const varLabel = dataset.label;
+
+    // Find the variable key by matching the label
+    let varShort = Object.keys(variableFullNames).find(
+      key => variableFullNames[key] === varLabel
+    );
+    // Fallback: try partial match if exact match fails
+    if (!varShort) {
+      varShort = Object.keys(variableFullNames).find(
+        key => varLabel.includes(variableFullNames[key].split(' ')[0])
+      );
+    }
+
+    const unit = variableUnits[varShort] || "";
+    const value = dataset.data[index];
+    const date = this.data.labels[index];
+
+    // --- Update y-axis label to the clicked variable ---
+    this.options.scales.y.title.text = varLabel;
+    this.update();
+
+    // Remove any existing tooltip
+    let oldTooltip = document.getElementById('chart-point-tooltip');
+    if (oldTooltip) oldTooltip.remove();
+
+    // Create tooltip div
+    const tooltip = document.createElement('div');
+    tooltip.id = 'chart-point-tooltip';
+    tooltip.style.position = 'fixed';
+    tooltip.style.background = 'rgba(255,255,255,0.97)';
+    tooltip.style.border = '1px solid #888';
+    tooltip.style.borderRadius = '8px';
+    tooltip.style.padding = '10px 16px';
+    tooltip.style.fontSize = '15px';
+    tooltip.style.color = '#222';
+    tooltip.style.boxShadow = '0 2px 8px rgba(0,0,0,0.18)';
+    tooltip.style.zIndex = 9999;
+    tooltip.innerHTML = `
+      <b>${varLabel}</b><br>
+      <b>Date:</b> ${date}<br>
+      <b>Value:</b> ${value.toFixed(2)} ${unit}
+    `;
+
+    // --- Position tooltip below the chart point ---
+    const chart = this;
+    const canvasRect = chart.canvas.getBoundingClientRect();
+    const meta = chart.getDatasetMeta(datasetIndex);
+    const point = meta.data[index];
+    if (point) {
+      const pos = point.getProps ? point.getProps(['x', 'y'], true) : point.getCenterPoint();
+      const tooltipX = canvasRect.left + pos.x;
+      const tooltipY = canvasRect.top + pos.y + 16; // 16px below the point
+      tooltip.style.left = `${tooltipX}px`;
+      tooltip.style.top = `${tooltipY}px`;
+    }
+
+    document.body.appendChild(tooltip);
+
+    // Remove tooltip on next click anywhere
+    setTimeout(() => {
+      document.addEventListener('mousedown', function removeTip() {
+        let tip = document.getElementById('chart-point-tooltip');
+        if (tip) tip.remove();
+        document.removeEventListener('mousedown', removeTip);
+      });
+    }, 10);
+  }
+}
+          }
+        });
+      }, 200);
+    });
+}
+
+
+   function updateWindVisualization(uWind, vWind, lats, lons) {
+  const ny = uWind.length;
+  const nx = uWind[0].length;
+  const flippedU = uWind.slice().reverse();
+  const flippedV = vWind.slice().reverse();
+
+  const lo1 = lons[0];
+  const lo2 = lons[lons.length - 1];
+  const la1 = lats[lats.length - 1];
+  const la2 = lats[0];
+  const dx = (lo2 - lo1) / (nx - 1);
+  const dy = (la1 - la2) / (ny - 1);
+
+  const windData = [
+    {
+      header: {
+        parameterUnit: "m.s-1",
+        parameterNumber: 2,
+        parameterNumberName: "u-component of wind",
+        parameterCategory: 2,
+        nx, ny, lo1, la1, lo2, la2, dx, dy,
+        refTime: "2025-05-15 00:00:00",
+        forecastTime: 5
+      },
+      data: flippedU.flat()
+    },
+    {
+      header: {
+        parameterUnit: "m.s-1",
+        parameterNumber: 3,
+        parameterNumberName: "v-component of wind",
+        parameterCategory: 2,
+        nx, ny, lo1, la1, lo2, la2, dx, dy,
+        refTime: "2025-05-15 00:00:00",
+        forecastTime: 5
+      },
+      data: flippedV.flat()
+    }
+  ];
+
+  if (windLayer) map.removeLayer(windLayer);
+
+  windLayer = L.velocityLayer({
+    displayValues: true,
+    displayOptions: {
+      velocityType: "Wind",
+      position: "bottomleft",
+      emptyString: "displaying wind data",
+      showCardinal: true
+    },
+    data: windData,
+    minVelocity: 0,
+    maxVelocity: 10,
+    velocityScale: 0.005,
+    particleAge: 90,
+    lineWidth: 2,
+    frameRate: 10
+  });
+
+  map.addLayer(windLayer);
+}
+    document.getElementById("home-btn").addEventListener("click", () => {
+      map.flyTo([22.5, 80], 5); 
+    });
+
+    document.getElementById("forward-btn").addEventListener("click", () => {
+      if (currentIndex < clickedPoints.length - 1) {
+        currentIndex++;
+        const { lat, lng } = clickedPoints[currentIndex];
+        loadForecast(lat, lng);
+        map.panTo([lat, lng]);
+      }
+    });
+
+    document.getElementById("backward-btn").addEventListener("click", () => {
+      if (currentIndex > 0) {
+        currentIndex--;
+        const { lat, lng } = clickedPoints[currentIndex];
+        loadForecast(lat, lng);
+        map.panTo([lat, lng]);
+      }
+    });
+    // <-- Add this closing brace to end the DOMContentLoaded function
+    });
+  </script>
+</body>
+</html>
